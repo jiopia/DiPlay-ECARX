@@ -16,9 +16,12 @@ object ConnectionSettingsSection {
     ): SettingsWidgets.ChoiceRowResult<MfiTarget> = SettingsWidgets.createChoiceRow(
         context = context,
         label = context.getString(R.string.mfi_certificate_signing_target),
+        // Remote signing is the only target that works when the head unit has no local identity to
+        // install, so it has to be reachable here; its server and token rows live in this section.
         options = listOf(
             MfiTarget.LOCAL to context.getString(R.string.local_offline),
             MfiTarget.USB_CH341 to context.getString(R.string.usb_ch341),
+            MfiTarget.REMOTE to context.getString(R.string.remote),
         ),
         selected = selected,
         theme = theme,

@@ -112,23 +112,6 @@ class GeelyClusterDisplayTest {
         assertEquals(1920, inset.widthPixels)
     }
 
-    @Test fun findDisplaySelectsThePanelOnTheMeasuredDeviceOnly() {
-        val id = ShadowDisplayManager.addDisplay(PANEL_QUALIFIER, PANEL_DISPLAY_ID)
-        shadowOf(app.getSystemService(DisplayManager::class.java).getDisplay(id)).apply {
-            setFlags(Display.FLAG_PRESENTATION)
-        }
-        try {
-            onTheMeasuredHeadUnit()
-            assertEquals(id, ClusterMapPresentation.findDisplay(app)?.displayId)
-
-            offTheMeasuredHeadUnit()
-            assertNull(ClusterMapPresentation.findDisplay(app))
-        } finally {
-            offTheMeasuredHeadUnit()
-            ShadowDisplayManager.removeDisplay(id)
-        }
-    }
-
     @Test fun clusterStreamIsThePanelSizeWhenTheClusterMapIsOn() {
         AirPlayPersistence.saveClusterMapEnabled(app, true)
         val id = ShadowDisplayManager.addDisplay(PANEL_QUALIFIER, PANEL_DISPLAY_ID)

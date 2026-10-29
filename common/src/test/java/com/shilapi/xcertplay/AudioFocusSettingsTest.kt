@@ -50,11 +50,12 @@ class AudioFocusSettingsTest {
         assertTrue(mute.isChecked)
     }
 
-    @Test fun navigationPromptFocusIsOffByDefaultAndShownOnlyWithAudioFocus() {
+    @Test fun navigationPromptFocusIsOnByDefaultAndDoesNotNeedTheAudioFocusSetting() {
         val activity = Robolectric.buildActivity(DiPlayActivity::class.java).get()
         activity.setTheme(android.R.style.Theme_Material_NoActionBar)
         activity.getSharedPreferences("xcertplay_airplay", 0).edit().clear().commit()
-        assertFalse(AirPlayPersistence.loadNavigationPromptAudioFocus(activity))
+        // An ECARX unit plays only the focus owner's sound, so prompts must ask for focus unasked.
+        assertTrue(AirPlayPersistence.loadNavigationPromptAudioFocus(activity))
         val page = LinearLayout(activity)
         DiPlayActivity::class.java.getDeclaredMethod("audioFocusControls", LinearLayout::class.java)
             .apply { isAccessible = true }.invoke(activity, page)
@@ -65,17 +66,16 @@ class AudioFocusSettingsTest {
             it.contentDescription == activity.getString(R.string.settings_navigation_prompt_audio_focus)
         }
         val mute = switches.single { it.contentDescription == activity.getString(R.string.audio_focus_auto_yield) }
-        assertSame(mute.parent.parent, prompts.parent.parent)
-        assertEquals(View.GONE, (prompts.parent.parent as View).visibility)
-        assertFalse(prompts.isChecked)
-        focus.isChecked = true
+        // Its own row, not a child of the Audio focus group: it works with that setting off.
+        assertNotSame(mute.parent.parent, prompts.parent.parent)
+        assertEquals(View.VISIBLE, (prompts.parent.parent as View).visibility)
+        assertTrue(prompts.isChecked)
+        prompts.isChecked = false
+        assertFalse(AirPlayPersistence.loadNavigationPromptAudioFocus(activity))
+        focus.isChecked = false
         assertEquals(View.VISIBLE, (prompts.parent.parent as View).visibility)
         prompts.isChecked = true
         assertTrue(AirPlayPersistence.loadNavigationPromptAudioFocus(activity))
-        focus.isChecked = false
-        assertTrue(AirPlayPersistence.loadNavigationPromptAudioFocus(activity))
-        prompts.isChecked = false
-        assertFalse(AirPlayPersistence.loadNavigationPromptAudioFocus(activity))
     }
 
     private fun views(view: View): Sequence<View> = sequence {

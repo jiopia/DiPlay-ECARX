@@ -218,7 +218,11 @@ class AndroidMediaSink(
     private val vendorLowLatencyDecoder: Boolean = false,
     /** Opt-in MTK ACodec low-latency/no-reorder modes, with per-session automatic fallback. */
     private val mtkDecoderTuningEnabled: Boolean = false,
-    /** Opt-in (#946): navigation prompts request duckable focus while the iPhone ducks audio. Needs [audioFocusEnabled]. */
+    /**
+     * (#946) Navigation prompts request duckable focus between the iPhone's duckAudio and unduckAudio.
+     * It is its own opt-in: an ECARX unit that plays only the focus owner's sound keeps prompts silent
+     * without it, so asking for the prompt focus must not also require the media focus setting.
+     */
     navigationPromptAudioFocus: Boolean = false,
 ) : MediaSink {
     // Each downlink publishes its own reference; a mic must match that stream and sample rate.
@@ -235,7 +239,9 @@ class AndroidMediaSink(
     private val navigationPromptFocus = NavigationPromptFocus(
         appContext,
         promptFocusEnabled = navigationPromptAudioFocus,
-        audioFocusEnabled = audioFocusEnabled,
+        // The prompt is a focus request of its own; the media focus setting only governs the sink's
+        // other tracks, so it must not veto this one (it used to, and prompts stayed silent).
+        audioFocusEnabled = audioFocusEnabled || navigationPromptAudioFocus,
         attributes = { navigationRouteAttributes(navigationChannel) },
         report = onAudioDiagnostic,
     )

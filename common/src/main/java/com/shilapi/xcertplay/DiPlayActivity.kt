@@ -81,14 +81,6 @@ import com.shilapi.xcertplay.settings.SettingsTheme
 import com.shilapi.xcertplay.settings.SettingsWidgets
 import com.shilapi.xcertplay.setup.SetupGuide
 import com.shilapi.xcertplay.transport.EvChargingConnectors
-import com.shilapi.xcertplay.update.BackgroundUpdateScheduler
-import com.shilapi.xcertplay.update.UpdateApkExport
-import com.shilapi.xcertplay.update.UpdateAvailability
-import com.shilapi.xcertplay.update.UpdateCatalog
-import com.shilapi.xcertplay.update.UpdateChecksums
-import com.shilapi.xcertplay.update.UpdateClient
-import com.shilapi.xcertplay.update.UpdateRelease
-import com.shilapi.xcertplay.update.UpdateReleaseLookup
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -219,22 +211,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var pendingScrollY: Int? = null
     private var pendingRailScrollY: Int? = null
     private var pendingRailFocus = false
-    private var availableUpdate: UpdateRelease? = null
-    private var updateSavedPath: String? = null
-    private var updateSavedUri: Uri? = null
-    /** Runs the check of the public update copy; tests run it inline. */
-    internal var updateInstallWorker: (Runnable) -> Unit = { Thread(it, "diplay-update-install").start() }
-    @Volatile private var updateStage = UpdateStage.IDLE
     @Volatile private var backupServer: SettingsBackupServer? = null
     @Volatile private var backupEndpoint: SettingsBackupEndpoint? = null
     /** The Settings category that opened the phone page, and the one to go back to. */
     private var backupOpenedFrom = SettingsCategory.ABOUT
     @Volatile private var backupSummary: String? = null
-    @Volatile private var updateGeneration = 0
-    @Volatile private var updateProgress: Int? = null
-    private var updateRelease: UpdateRelease? = null
-    private var updateFile: File? = null
-    private var updateMessage: String? = null
     private var carButtonCard: LinearLayout? = null
     private var hotspotStartupResult: CarHotspotTethering.Result? = null
     @Volatile private var startupHotspotCancelled = false
@@ -323,8 +304,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         if (savedInstanceState == null && isLauncherIntent(intent) && CarPlayBackgroundSession.hasSession()) {
             openProjection(); finish(); return
         }
-        scheduleBackgroundUpdateChecks()
-        availableUpdate = UpdateAvailability.available(this, version())
         enforceInterfaceSize()
         refreshAppearance()
         rememberLaunchAppearance()
@@ -479,7 +458,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }
         // The background check runs two minutes after opening, usually while CarPlay is in front: what it
         // found shows when DiPlay comes back, not only after the activity is created again.
-        availableUpdate = UpdateAvailability.available(this, version())
         // Back from the car settings: refresh the car hotspot reminder on the home page.
         if (!initialLaunch &&
             (page == "home" || page == "settings" || page == "connection" || page == "setup")) render()
@@ -491,13 +469,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 DiPlayPreferences.autoConnect(this) && intent.getStringExtra("page") == null && page != "setup") {
                 // Launched at boot, the head unit's own hotspot is still coming up. Connecting at
                 // once lands in connect()'s "turn on the car hotspot" dialog, which the driver then
-                // has to dismiss seconds later, after the hotspot exists on its own. Wait for it.
-                handler.postDelayed({
-                    if (isFinishing || isDestroyed || CarPlayBackgroundSession.hasSession()) {
-                        return@postDelayed
-                    }
-                    connect(DiPlayPreferences.autoConnectWireless(this))
-                }, AUTO_CONNECT_AFTER_LAUNCH_MILLIS)
+                // has to dismiss seconds later, after the hotspot exists on its own.
+                scheduleLaunchAutoConnect()
             }
         }
     }
@@ -513,6 +486,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     override fun onDestroy() {
         settingsSearchPopup?.dismiss()
+        autoConnectPoll?.let(handler::removeCallbacks)
+        autoConnectPoll = null
         appearanceObserverRemoval?.invoke()
         appearanceObserverRemoval = null
         handler.removeCallbacks(appearancePoll)
@@ -936,30 +911,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         if (!compact) right.addView(label(getString(R.string.make_diplay_feel_right_for_your_car), 14, MUTED).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(24)) })
         else right.addView(space(12))
         right.addView(label(getString(R.string.home_public_preview, version()), 12, MUTED).apply { letterSpacing = .08f })
-        availableUpdate?.let { release ->
-            val message = getString(R.string.update_available_home)
-            val tint = { alpha: Int -> (WARNING and 0x00FFFFFF) or (alpha shl 24) }
-            val chip = GradientDrawable().apply {
-                setColor(tint(0x26))
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), tint(0x80))
-            }
-            right.addView(label(message, 14, WARNING, true).apply {
-                gravity = Gravity.CENTER
-                minHeight = dp(60)
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                isClickable = true
-                isFocusable = true
-                contentDescription = message
-                background = RippleDrawable(
-                    ColorStateList.valueOf(RIPPLE),
-                    chip,
-                    GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(16).toFloat() },
-                )
-                foreground = focusRing(radiusDp = 16)
-                setOnClickListener { openAvailableUpdate(release) }
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-        }
         if (compact && resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
             val compactRight = column().apply {
                 addView(space(8))
@@ -2070,10 +2021,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         settingsPageTitle(content, getString(R.string.about_diplay), getString(R.string.carplay_at_home_in_your_car))
         section(content, getString(R.string.about_public_preview_prefix, version())) { card ->
             card.addView(label(getString(R.string.an_independent_carplay_receiver_for_android_head_units_wir), 17, TEXT))
-            card.addView(updateRow())
-            toggle(card, getString(R.string.settings_background_update_checks),
-                getString(R.string.settings_background_update_checks_description),
-                UpdateAvailability.backgroundChecksEnabled(this)) { UpdateAvailability.saveBackgroundChecksEnabled(this, it) }
         }
         section(content, getString(R.string.backup_title)) { card ->
             card.addView(button(getString(R.string.backup_open), false) { openBackup() }, matchButton(0, 60))
@@ -2083,8 +2030,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             card.addView(label(getString(R.string.receiver_based_on_xcertplay_licensed_under_gpl_3_0_diplay), 16, MUTED))
         }
     }
-
-    private enum class UpdateStage { IDLE, CHECKING, AVAILABLE, DOWNLOADING, VERIFYING, READY, FAILED }
 
     private fun openBackup(from: SettingsCategory = SettingsCategory.ABOUT) {
         backupOpenedFrom = from
@@ -2193,200 +2138,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     private fun backupPageHtml(): ByteArray = assets.open("settings-backup.html").use { it.readBytes() }
-
-    private fun updateRow(): View {
-        val container = column().apply { setPadding(0, dp(12), 0, 0) }
-        updateMessage?.let { container.addView(label(it, 14, MUTED)) }
-        when (updateStage) {
-            UpdateStage.IDLE, UpdateStage.FAILED ->
-                container.addView(button(getString(R.string.update_check), false) { checkForUpdates() },
-                    matchButton(if (updateMessage == null) 0 else 10, 60))
-            UpdateStage.CHECKING -> container.addView(label(getString(R.string.update_checking), 14, MUTED))
-            UpdateStage.AVAILABLE -> container.addView(
-                button(getString(R.string.update_download), true) { downloadUpdate() },
-                matchButton(10, 60))
-            UpdateStage.DOWNLOADING -> container.addView(label(getString(R.string.update_downloading, updateProgress ?: 0), 14, MUTED))
-            UpdateStage.VERIFYING -> container.addView(label(getString(R.string.update_verifying), 14, MUTED))
-            UpdateStage.READY -> {
-                container.addView(
-                    button(getString(R.string.update_install, updateRelease?.tagName.orEmpty()), true) { installUpdate() },
-                    matchButton(10, 60))
-                updateSavedPath?.let { container.addView(label(getString(R.string.update_saved_to, it), 13, MUTED).apply { setPadding(0, dp(10), 0, 0) }) }
-            }
-        }
-        return container
-    }
-
-    private fun checkForUpdates() {
-        updateStage = UpdateStage.CHECKING
-        updateMessage = null
-        val generation = ++updateGeneration
-        render()
-        Thread({
-            val outcome = runCatching { latestRelease() }
-            runOnUiThread {
-                if (generation != updateGeneration || isFinishing || isDestroyed) return@runOnUiThread
-                outcome.fold(
-                    { release ->
-                        UpdateAvailability.recordAttempt(this, System.currentTimeMillis())
-                        availableUpdate = release
-                        if (release == null) {
-                            UpdateAvailability.clear(this)
-                            updateMessage = getString(R.string.update_up_to_date)
-                            updateStage = UpdateStage.IDLE
-                        } else {
-                            UpdateAvailability.save(this, release)
-                            updateRelease = release
-                            updateStage = UpdateStage.AVAILABLE
-                        }
-                        render()
-                    },
-                    { failure ->
-                        Log.w("DiPlay-Update", "update check failed", failure)
-                        updateMessage = failure.message ?: getString(R.string.update_failed)
-                        updateStage = UpdateStage.FAILED
-                        render()
-                    },
-                )
-            }
-        }, "diplay-update-check").start()
-    }
-
-    private fun latestRelease(): UpdateRelease? {
-        return UpdateReleaseLookup.latest(version(), userAgent())
-    }
-
-    private fun openAvailableUpdate(release: UpdateRelease) {
-        updateRelease = release
-        updateMessage = null
-        updateStage = UpdateStage.AVAILABLE
-        page = "settings"
-        settingsCategory = SettingsCategory.ABOUT
-        render()
-    }
-
-    private fun scheduleBackgroundUpdateChecks() {
-        runCatching { BackgroundUpdateScheduler.schedule(applicationContext) }
-            .onFailure { Log.i("DiPlay-Update", "background update scheduling unavailable", it) }
-    }
-
-    private fun downloadUpdate() {
-        if (updateRelease == null) return
-        lateinit var release: UpdateRelease
-        updateStage = UpdateStage.DOWNLOADING
-        updateSavedPath = null
-        updateSavedUri = null
-        updateProgress = null
-        updateMessage = null
-        val generation = ++updateGeneration
-        render()
-        Thread({
-            // Each attempt owns its files, including across activity recreation.
-            val directory = File(cacheDir, "update/${java.util.UUID.randomUUID()}")
-            val outcome = runCatching {
-                // The cached release can be a day old. Download the newest one.
-                release = latestRelease() ?: throw IOException(getString(R.string.update_up_to_date))
-                val checksumsFile = File(directory, UpdateCatalog.CHECKSUMS_FILE)
-                UpdateClient.download(release.checksumsUrl, checksumsFile) { _, _ -> }
-                val apkFile = File(directory, release.apkName)
-                UpdateClient.download(release.apkUrl, apkFile) { written, total ->
-                    val percent = total?.takeIf { it > 0 }?.let { (written * 100 / it).toInt() } ?: return@download
-                    if (percent != updateProgress) {
-                        updateProgress = percent
-                        refreshUpdateUi(generation)
-                    }
-                }
-                updateStage = UpdateStage.VERIFYING
-                refreshUpdateUi(generation)
-                val expected = UpdateChecksums.parse(checksumsFile.readText())
-                val actual = UpdateChecksums.sha256Hex(apkFile)
-                if (!UpdateChecksums.matches(expected, release.apkName, actual)) {
-                    throw IOException("Checksum mismatch for ${release.apkName}")
-                }
-                apkFile
-            }.onFailure { directory.deleteRecursively() }
-            val saved = outcome.getOrNull()?.let { UpdateApkExport.copy(applicationContext, it) }
-            runOnUiThread {
-                if (generation != updateGeneration || isFinishing || isDestroyed) {
-                    directory.deleteRecursively()
-                    return@runOnUiThread
-                }
-                outcome.fold(
-                    { file ->
-                        updateRelease = release
-                        updateFile = file
-                        updateSavedPath = saved?.path
-                        updateSavedUri = saved?.uri
-                        updateStage = UpdateStage.READY
-                        render()
-                    },
-                    { failure ->
-                        Log.w("DiPlay-Update", "update download failed", failure)
-                        updateMessage = failure.message ?: getString(R.string.update_failed)
-                        updateStage = UpdateStage.FAILED
-                        render()
-                    },
-                )
-            }
-        }, "diplay-update-download").start()
-    }
-
-    private fun installUpdate() {
-        // No unknown-sources pre-check: some head units answer its settings page with "Not supported yet".
-        // The chosen installer asks for that permission itself.
-        installApk(updateFile ?: return)
-    }
-
-    private fun installApk(file: File) {
-        // The public copy lets file managers such as MT Manager open the APK. The private provider URI is the fallback,
-        // including when the driver deleted the public copy.
-        // The public copy is outside the app's control, so it must still match the verified file. Hashing two
-        // APKs takes seconds on a slow head unit, so it runs off the main thread.
-        val savedUri = updateSavedUri
-        val generation = updateGeneration
-        updateInstallWorker(Runnable {
-            val publicUri = savedUri?.takeIf { sameContent(it, file) }
-            runOnUiThread {
-                if (generation == updateGeneration && !isFinishing && !isDestroyed) startInstaller(file, publicUri)
-            }
-        })
-    }
-
-    private fun startInstaller(file: File, publicUri: Uri?) {
-        val uri = publicUri ?: FileProvider.getUriForFile(this, "$packageName.update-apks", file)
-        val view = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        // Ask only when several installers exist. A lone system installer opens directly, as before.
-        val installers = packageManager.queryIntentActivities(view, PackageManager.MATCH_DEFAULT_ONLY).size
-        val launch = if (installers > 1) Intent.createChooser(view, null) else view
-        val outcome = "${if (installers > 1) "chooser" else "direct"} uri=${if (publicUri != null) "public" else "provider"} installers=$installers"
-        try {
-            startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            Log.i("DiPlay-Update", "install started: $outcome")
-            UpdateAvailability.recordInstall(applicationContext, System.currentTimeMillis(), outcome)
-        } catch (failure: RuntimeException) {
-            Log.w("DiPlay-Update", "install failed to start: $outcome", failure)
-            UpdateAvailability.recordInstall(applicationContext, System.currentTimeMillis(), "$outcome failed=${failure.javaClass.simpleName}")
-            updateMessage = getString(R.string.update_failed)
-            render()
-        }
-    }
-
-    private fun sameContent(uri: Uri, verified: File): Boolean = runCatching {
-        val copy = contentResolver.openInputStream(uri)?.use { UpdateChecksums.sha256Hex(it) }
-        copy != null && copy == UpdateChecksums.sha256Hex(verified)
-    }.getOrDefault(false)
-
-    private fun refreshUpdateUi(generation: Int) {
-        runOnUiThread {
-            if (generation != updateGeneration || isFinishing || isDestroyed || !(page == "settings" && settingsCategory == SettingsCategory.ABOUT)) return@runOnUiThread
-            render()
-        }
-    }
-
-    private fun userAgent() = "DiPlay/${version()}"
 
     // An opted-in connection prepares the hotspot in the controller instead of stopping at this reminder.
     private fun carHotspotOff(): Boolean =
@@ -4356,6 +4107,51 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         parent.addView(space(12))
     }
 
+    /** Launch-time auto-connect still waiting for the car hotspot; null when nothing is pending. */
+    private var autoConnectPoll: Runnable? = null
+
+    /**
+     * Launch-time auto-connect. The car enables its own hotspot a few seconds after boot, so instead
+     * of one fixed wait this connects as soon as the car reports the hotspot on, keeps waiting while
+     * it is off, and after [AUTO_CONNECT_HOTSPOT_WAIT_MILLIS] leaves the manual connection to the
+     * driver. Only the car-hotspot mode has something to wait for: USB needs no hotspot, and Wi-Fi
+     * Direct or an existing network is DiPlay's own.
+     */
+    private fun scheduleLaunchAutoConnect() {
+        autoConnectPoll?.let(handler::removeCallbacks)
+        autoConnectPoll = null
+        val wireless = DiPlayPreferences.autoConnectWireless(this)
+        if (!wireless || AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) {
+            handler.postDelayed({ launchAutoConnect(wireless) }, AUTO_CONNECT_AFTER_LAUNCH_MILLIS)
+            return
+        }
+        val deadline = android.os.SystemClock.elapsedRealtime() + AUTO_CONNECT_HOTSPOT_WAIT_MILLIS
+        val poll = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed || CarPlayBackgroundSession.hasSession()) {
+                    autoConnectPoll = null
+                    return
+                }
+                if (!carHotspotOff()) {
+                    autoConnectPoll = null
+                    launchAutoConnect(true)
+                } else if (android.os.SystemClock.elapsedRealtime() < deadline) {
+                    handler.postDelayed(this, AUTO_CONNECT_HOTSPOT_POLL_MILLIS)
+                } else {
+                    // Still off: the home page already says so and offers the manual connection.
+                    autoConnectPoll = null
+                }
+            }
+        }
+        autoConnectPoll = poll
+        handler.postDelayed(poll, AUTO_CONNECT_FIRST_CHECK_MILLIS)
+    }
+
+    private fun launchAutoConnect(wireless: Boolean) {
+        if (isFinishing || isDestroyed || CarPlayBackgroundSession.hasSession()) return
+        connect(wireless)
+    }
+
     private fun connect(wireless: Boolean) {
         startupHotspotCancelled = true
         if (wireless && pendingCarHotspotSetup) { toast(getString(R.string.save_your_hotspot_details_in_connection_setup_first)); page = "connection"; render(); return }
@@ -4619,7 +4415,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         appendLine(WheelKeyService.report(appContext))
         WheelKeyLog.report(WheelKeyService.connected()).forEach { appendLine(it) }
         appendLine()
-        appendLine(UpdateAvailability.report(appContext, System.currentTimeMillis()))
         appendLine()
         appendLine(AdbDiagnostics.report(appContext))
         appendLine()
@@ -4822,13 +4617,16 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             AirPlayPersistence.saveAudioFocusAutoYield(this, it)
             markReconnectNeeded()
         }
-        toggle(dependent, getString(R.string.settings_navigation_prompt_audio_focus),
+        parent.addView(dependent)
+        // Outside the Audio focus group: this is the switch that makes prompts audible on a head unit
+        // that plays only the focus owner's sound, and it ducks CarPlay's music during prompts. It
+        // asks for its own focus request, so it works with the group above switched off.
+        toggle(parent, getString(R.string.settings_navigation_prompt_audio_focus),
             getString(R.string.settings_navigation_prompt_audio_focus_description),
             AirPlayPersistence.loadNavigationPromptAudioFocus(this)) {
             AirPlayPersistence.saveNavigationPromptAudioFocus(this, it)
             markReconnectNeeded()
         }
-        parent.addView(dependent)
     }
 
 
@@ -5353,13 +5151,16 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
         private const val ADB_KEY_SAVE_WAIT_MILLIS = 500L
         /**
-         * How long the launch-time auto-connect waits before it starts a session.
-         *
-         * The car's hotspot is enabled at boot by the head unit itself, a few seconds after DiPlay
-         * is launched. Connecting before it exists raises the "turn on the car hotspot" dialog for
-         * a condition that is about to fix itself, so this is deliberately longer than that window.
+         * How long the launch-time auto-connect waits before it starts a session when there is no car
+         * hotspot to watch (USB, or a network DiPlay owns). The Wi-Fi Direct group and the join of an
+         * existing network need a moment too, so this stays longer than that window.
          */
         private const val AUTO_CONNECT_AFTER_LAUNCH_MILLIS = 5_000L
+        /** First look at the car hotspot: sooner than the fixed wait, so an already-on one connects at once. */
+        private const val AUTO_CONNECT_FIRST_CHECK_MILLIS = 1_200L
+        private const val AUTO_CONNECT_HOTSPOT_POLL_MILLIS = 1_000L
+        /** Give up waiting for the car hotspot after this long and leave the manual connection to the driver. */
+        private const val AUTO_CONNECT_HOTSPOT_WAIT_MILLIS = 60_000L
         private const val REPORT_VIEW_MAX_CHARS = 200_000
         private const val REPORT_HEAD_MAX_CHARS = 20_000
         private const val APPEARANCE_POLL_MILLIS = 2_000L

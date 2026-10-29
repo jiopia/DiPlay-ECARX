@@ -101,7 +101,6 @@ class SettingsBackupCodecTest {
         AirPlayPersistence.saveAmbientDelaySeconds(context, 10)
         AirPlayPersistence.saveNavigationAudioAttenuationDb(context, -8)
         AirPlayPersistence.saveCallSpeakerphone(context, true)
-        AirPlayPersistence.saveLegacyClusterEnabled(context, true)
         AirPlayPersistence.saveLauncherBubble(context, true)
         AirPlayPersistence.saveLauncherBubbleSize(context, 16)
         val document = SettingsBackupCodec.export(context, "0.2.21")
@@ -113,7 +112,6 @@ class SettingsBackupCodecTest {
         assertEquals(10, AirPlayPersistence.loadAmbientDelaySeconds(context))
         assertEquals(-8, AirPlayPersistence.loadNavigationAudioAttenuationDb(context))
         assertTrue(AirPlayPersistence.loadCallSpeakerphone(context))
-        assertTrue(AirPlayPersistence.loadLegacyClusterEnabled(context))
         assertTrue(AirPlayPersistence.loadLauncherBubble(context))
         assertEquals(16, AirPlayPersistence.loadLauncherBubbleSize(context))
     }

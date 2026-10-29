@@ -141,8 +141,12 @@ object AirPlayPersistence {
 
     const val DEFAULT_MANUFACTURER = "DiPlay"
     const val DEFAULT_MODEL = "DiPlay"
-    /** Empty by default: the head unit's own brand is not assumed, the user may set it in settings. */
-    const val DEFAULT_OEM_LABEL = ""
+    /**
+     * The car icon CarPlay shows in its app list is named by this label, and iOS drops the name when
+     * it is blank. It matches [com.shilapi.xcertplay.airplay.AirPlayConfig.oemLabel] and the IAP2
+     * name so the button reads the same everywhere; the user may change it in the settings.
+     */
+    const val DEFAULT_OEM_LABEL = "Lynk&Co"
     const val DEFAULT_MFI_I2C_PATH = "/dev/i2c-1"
 
     fun loadAmbientDelaySeconds(context: Context): Int =
@@ -265,10 +269,14 @@ object AirPlayPersistence {
             .apply()
     }
 
-    /** Opt-in (#946, #545): each navigation prompt requests duckable focus. Applies only while audio focus is on. */
+    /**
+     * On by default on this head unit: with the option off, prompts play without any focus and an
+     * ECARX unit that plays only the focus owner's sound keeps them silent (#946, #545). It is its
+     * own opt-in and does not need the Audio focus setting.
+     */
     fun loadNavigationPromptAudioFocus(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_NAVIGATION_PROMPT_AUDIO_FOCUS, false)
+            .getBoolean(KEY_NAVIGATION_PROMPT_AUDIO_FOCUS, true)
 
     fun saveNavigationPromptAudioFocus(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
