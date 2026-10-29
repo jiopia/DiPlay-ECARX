@@ -1941,13 +1941,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         filteredSection(content, SettingsSection.AUDIO_ROUTING,
             getString(R.string.audio_routing), R.drawable.ic_dp_audio) { card ->
             // First row on purpose: this is the switch drivers look for, and it used to hide at the
-            // bottom of Advanced media where no one found it.
+            // bottom of Advanced media where no one found it. A bound method reference rather than a
+            // lambda: one more lambda in this file renumbers every later one in the class set.
             toggle(card, getString(R.string.settings_navi_ducks_media),
                 getString(R.string.settings_navi_ducks_media_description),
-                AirPlayPersistence.loadNaviDucksMedia(this)) {
-                AirPlayPersistence.saveNaviDucksMedia(this, it)
-                CarPlayBackgroundSession.snapshot()?.sink?.setNaviDucksMedia(it)
-            }
+                AirPlayPersistence.loadNaviDucksMedia(this), save = this::onNaviDucksMediaChanged)
             mediaChannelControl(card)
             navigationChannelControl(card)
             val gainSlider = overlaySliderRow(
@@ -2744,6 +2742,12 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         parent.addView(label(getString(R.string.settings_wifi_direct_band_note), 15, MUTED).apply {
             setPadding(0, 0, 0, dp(12))
         })
+    }
+
+    /** The duck level arrives per prompt, so this switch acts on the running session, not the next one. */
+    private fun onNaviDucksMediaChanged(enabled: Boolean) {
+        AirPlayPersistence.saveNaviDucksMedia(this, enabled)
+        CarPlayBackgroundSession.snapshot()?.sink?.setNaviDucksMedia(enabled)
     }
 
     private fun mediaChannelControl(parent: LinearLayout) {
