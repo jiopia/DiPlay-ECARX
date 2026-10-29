@@ -912,6 +912,8 @@
     <string name="settings_disable_media_key_audio_focus_description">CarPlay 音樂播放時不再由 DiPlay 要求媒體音訊焦點。若車機將實體音量鍵導向 DiPlay，導致音量鍵無法調整音量，請開啟此項。部分依賴音訊焦點的車機可能無法繼續使用方向盤播放、暫停和切歌鍵。下次連線至 CarPlay 時生效。</string>
     <string name="settings_navigation_prompt_audio_focus">導航播報要求音訊焦點</string>
     <string name="settings_navigation_prompt_audio_focus_description">每次 CarPlay 導航播報期間，DiPlay 會要求可壓低其他聲音的暫時音訊焦點，播報結束後釋放。適用於不播放音樂時導航沒有聲音，或希望導航播報時壓低音樂的情況。播報期間車機本身的聲音可能變小或暫停。下次連線至 CarPlay 時生效。</string>
+    <string name="settings_navi_ducks_media">導航播報時壓低音樂</string>
+    <string name="settings_navi_ducks_media_description">每次 CarPlay 導航播報期間，把 CarPlay 裡正在播放的音樂調低到 iPhone 要求的音量，播報結束後恢復。關閉後音樂保持原音量。</string>
     <string name="settings_ambient_album">跟隨專輯封面</string>
     <string name="settings_ambient_album_description">按封面取色並近似對應原車可用色號。灰黑或無封面時使用全部31色；大面積白色封面可使用白色或冷白。</string>
     <string name="settings_cluster_speedometer">儀表板速度計（實驗性）</string>

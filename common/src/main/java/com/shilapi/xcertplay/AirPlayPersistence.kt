@@ -47,6 +47,7 @@ object AirPlayPersistence {
     private const val KEY_AUDIO_FOCUS_ENABLED = "audio_focus_enabled"
     private const val KEY_AUDIO_FOCUS_AUTO_YIELD = "audio_focus_auto_yield"
     private const val KEY_NAVIGATION_PROMPT_AUDIO_FOCUS = "navigation_prompt_audio_focus"
+    private const val KEY_NAVI_DUCKS_MEDIA = "navi_ducks_media"
     private const val KEY_DISABLE_MEDIA_KEY_AUDIO_FOCUS = "disable_media_key_audio_focus"
     private const val KEY_MEDIA_AUDIO_CHANNEL = "media_audio_channel"
     private const val KEY_NAVIGATION_AUDIO_CHANNEL = "navigation_audio_channel"
@@ -281,6 +282,21 @@ object AirPlayPersistence {
     fun saveNavigationPromptAudioFocus(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_NAVIGATION_PROMPT_AUDIO_FOCUS, enabled)
+            .apply()
+    }
+
+    /**
+     * On by default: during a navigation prompt the iPhone sends duckAudio with the level it wants
+     * the car's media lowered to, and CarPlay's music is played by this app, so nothing else can do
+     * it. Switching it off leaves the music at full volume under the prompt.
+     */
+    fun loadNaviDucksMedia(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_NAVI_DUCKS_MEDIA, true)
+
+    fun saveNaviDucksMedia(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_NAVI_DUCKS_MEDIA, enabled)
             .apply()
     }
 

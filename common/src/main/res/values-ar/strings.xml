@@ -852,6 +852,8 @@
     <string name="settings_disable_media_key_audio_focus_description">يمنع DiPlay من طلب تركيز صوت الوسائط أثناء تشغيل موسيقى CarPlay. فعّله إذا كانت وحدة السيارة توجّه أزرار مستوى الصوت الفعلية إلى DiPlay فلا تعود تضبط مستوى الصوت. قد تتوقف أزرار التشغيل والإيقاف المؤقت وتغيير المسار في عجلة القيادة على الوحدات التي تتطلب التركيز. يُطبّق عند اتصال CarPlay التالي.</string>
     <string name="settings_navigation_prompt_audio_focus">تطلب إرشادات الملاحة تركيز الصوت</string>
     <string name="settings_navigation_prompt_audio_focus_description">أثناء كل إرشاد ملاحة صوتي من CarPlay، يطلب DiPlay تركيز صوت مؤقتًا يسمح بخفض الأصوات الأخرى، ثم يحرّره بعد انتهاء الإرشاد. جرّبه إذا كانت الإرشادات لا تُسمع حتى تبدأ الموسيقى، أو إذا أردت أن تنخفض الموسيقى أثناء الإرشادات. قد ينخفض صوت وحدة السيارة نفسها أو يتوقف مؤقتًا أثناء الإرشادات. يُطبّق عند اتصال CarPlay التالي.</string>
+    <string name="settings_navi_ducks_media">خفض الموسيقى أثناء إرشادات الملاحة</string>
+    <string name="settings_navi_ducks_media_description">خلال كل إرشاد ملاحة من CarPlay تُخفض الموسيقى التي تعمل في CarPlay إلى المستوى الذي يطلبه iPhone ثم تُعاد. أوقف هذا الخيار لتبقى الموسيقى بكامل الصوت.</string>
     <string name="settings_ambient_album">اتباع غلاف الألبوم</string>
     <string name="settings_ambient_album_description">يُطابق لون الغلاف تقريبياً مع ألوان السيارة المتاحة. تستخدم الأغلفة الرمادية أو السوداء أو المفقودة جميع الألوان الـ31؛ وقد تستخدم الأغلفة البيضاء غالباً الأبيض أو الأبيض البارد.</string>
     <string name="settings_cluster_speedometer">عداد سرعة لوحة العدادات (تجريبي)</string>

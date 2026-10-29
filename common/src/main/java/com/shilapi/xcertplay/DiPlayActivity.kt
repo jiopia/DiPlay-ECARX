@@ -1940,6 +1940,14 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             getString(R.string.car_button_in_carplay), R.drawable.ic_dp_car) { card -> carButtonCard = card; carButtonControls(card) }
         filteredSection(content, SettingsSection.AUDIO_ROUTING,
             getString(R.string.audio_routing), R.drawable.ic_dp_audio) { card ->
+            // First row on purpose: this is the switch drivers look for, and it used to hide at the
+            // bottom of Advanced media where no one found it.
+            toggle(card, getString(R.string.settings_navi_ducks_media),
+                getString(R.string.settings_navi_ducks_media_description),
+                AirPlayPersistence.loadNaviDucksMedia(this)) {
+                AirPlayPersistence.saveNaviDucksMedia(this, it)
+                CarPlayBackgroundSession.snapshot()?.sink?.setNaviDucksMedia(it)
+            }
             mediaChannelControl(card)
             navigationChannelControl(card)
             val gainSlider = overlaySliderRow(

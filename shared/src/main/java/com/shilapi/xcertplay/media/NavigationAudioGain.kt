@@ -13,9 +13,16 @@ object NavigationAudioGain {
     /** Amplitude scale (not a percent); -20 dB = 0.1 and 0 dB = 1.0. */
     fun linear(db: Int): Float = 10.0.pow(clamp(db) / 20.0).toFloat()
 
+    /** The same scale for a fractional level, used while the music ramps into a duck. */
+    fun linear(db: Float): Float = 10.0.pow(db / 20.0).toFloat()
+
     /** Scales 16-bit little-endian PCM in place by [db]; 0 dB leaves it untouched. */
     fun scalePcm16(data: ByteArray, offset: Int, length: Int, db: Int) {
-        val gain = linear(db)
+        scalePcm16(data, offset, length, linear(db))
+    }
+
+    /** Scales 16-bit little-endian PCM in place by an amplitude [gain]; 1 leaves it untouched. */
+    fun scalePcm16(data: ByteArray, offset: Int, length: Int, gain: Float) {
         if (gain >= 1f) return
         val end = offset + (length and 1.inv())
         var i = offset

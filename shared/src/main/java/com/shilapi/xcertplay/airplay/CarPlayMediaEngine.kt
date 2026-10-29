@@ -36,7 +36,7 @@ interface MediaSink {
     fun onMicrophoneStopped(id: AudioStreamId) {}
     fun onIapMessage(bytes: ByteArray) {}
     /** The iPhone asked the car to duck its other audio for a navigation prompt (true), or to restore it. */
-    fun onAudioDuck(ducked: Boolean) {}
+    fun onAudioDuck(ducked: Boolean, volumeDb: Float = 0f) {}
 }
 
 /**
@@ -543,9 +543,9 @@ class CarPlayMediaEngine(
         if (isScreenStreamType(type)) sink.onScreenStreamActive(type, false)
     }
 
-    override fun onAudioDuck(session: AirPlaySession, ducked: Boolean) {
+    override fun onAudioDuck(session: AirPlaySession, ducked: Boolean, volumeDb: Float) {
         if (ducked) duckingSession.set(session) else duckingSession.compareAndSet(session, null)
-        sink.onAudioDuck(ducked)
+        sink.onAudioDuck(ducked, volumeDb)
     }
 
     override fun onSessionClosed(session: AirPlaySession) {

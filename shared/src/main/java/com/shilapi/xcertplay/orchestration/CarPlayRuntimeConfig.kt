@@ -66,6 +66,11 @@ class CarPlayRuntimeConfig(
     /** Interface override for head units that keep their hotspot off the Wi-Fi tether list (#573). */
     val manualHotspotInterface: String? = null,
     val wirelessBluetoothDeviceAddress: String? = null,
+    /**
+     * Told the phone a wireless run actually reached, when that is not the picked one. The pick lives
+     * in the app's preferences, which this module must not know about, so the host writes it back.
+     */
+    val onWirelessBluetoothDeviceReached: (address: String, name: String?) -> Unit = { _, _ -> },
     val locationReportingEnabled: Boolean = false,
     val wifiP2pPreferredChannel: Int = WifiP2pChannels.AUTO,
     val existingWifiSsid: String = "",

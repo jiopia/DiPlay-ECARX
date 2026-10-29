@@ -224,7 +224,15 @@ class AndroidMediaSink(
      * without it, so asking for the prompt focus must not also require the media focus setting.
      */
     navigationPromptAudioFocus: Boolean = false,
+    /**
+     * Lower CarPlay's own music to the level the iPhone asks for between duckAudio and unduckAudio.
+     * This app plays that music, so a head unit that lowers "other" audio never touches it: without
+     * this the prompt simply talks over full-volume music.
+     */
+    naviDucksMedia: Boolean = true,
 ) : MediaSink {
+    /** Read from the AirPlay control thread; the Settings switch changes it without a reconnect. */
+    @Volatile private var mediaDuckingEnabled = naviDucksMedia
     // Each downlink publishes its own reference; a mic must match that stream and sample rate.
     private val callEchoReferences = ConcurrentHashMap<AudioStreamId, EchoReference>()
     private val appContext = context?.applicationContext
@@ -246,8 +254,33 @@ class AndroidMediaSink(
         report = onAudioDiagnostic,
     )
 
-    override fun onAudioDuck(ducked: Boolean) {
+    /**
+     * dB the media tracks are lowered to while a prompt plays; [NO_DUCK_DB] is full volume. Set on
+     * the AirPlay control thread and ramped per track on each render thread in [AudioRenderer].
+     */
+    @Volatile private var mediaDuckTargetDb = NO_DUCK_DB
+
+    override fun onAudioDuck(ducked: Boolean, volumeDb: Float) {
         if (ducked) navigationPromptFocus.onDuck() else navigationPromptFocus.onUnduck()
+        // The iPhone states the level it wants the car's media at; CarPlay's music is played here,
+        // so the head unit's own ducking never reaches it (#946 left this to the focus request only).
+        setMediaDuckDb(
+            if (ducked && mediaDuckingEnabled) volumeDb.coerceIn(MEDIA_DUCK_FLOOR_DB, NO_DUCK_DB) else NO_DUCK_DB,
+        )
+    }
+
+    /** Settings callback: takes effect on the next prompt, and restores the music if switched off now. */
+    fun setNaviDucksMedia(enabled: Boolean) {
+        mediaDuckingEnabled = enabled
+        if (!enabled) setMediaDuckDb(NO_DUCK_DB)
+    }
+
+    private fun setMediaDuckDb(db: Float) {
+        if (db == mediaDuckTargetDb) return
+        mediaDuckTargetDb = db
+        // A loop rather than forEach: one more lambda here renames this class's lambda classes.
+        for (renderer in audioRenderers.values) renderer.setMediaDuckDb(db)
+        onAudioDiagnostic("Audio: media duck db=$db")
     }
 
     /** The media-key session may own Android's current focus request for this same sink. */
@@ -803,10 +836,12 @@ class AndroidMediaSink(
             voiceFilter = callVoiceFilter && format.audioType == TELEPHONY_AUDIO_TYPE,
         ).also {
             it.setNavigationAttenuationDb(navigationAttenuationDb)
+            it.setMediaDuckDb(mediaDuckTargetDb)
             if (format.audioType == TELEPHONY_AUDIO_TYPE) it.onRoutedToEarpiece = { moveCallToLoudspeaker(id) }
             audioRenderers[id] = it
             // Cover a Settings change made while this renderer was being prepared.
             it.setNavigationAttenuationDb(navigationAttenuationDb)
+            it.setMediaDuckDb(mediaDuckTargetDb)
         }
     }
 
@@ -817,6 +852,13 @@ class AndroidMediaSink(
 
 /** CarPlay's main screen stream type. */
 private const val MAIN_SCREEN_TYPE = 110
+
+/** Full volume: the music is not being ducked. */
+private const val NO_DUCK_DB = 0f
+/** Deepest the music is lowered to; below this it is inaudible anyway. */
+private const val MEDIA_DUCK_FLOOR_DB = -40f
+/** One ramp step per decoded block, so the drop and the return each take about half a second. */
+private const val MEDIA_DUCK_RAMP_STEP_DB = 0.75f
 
 /**
  * An offscreen consumer a parked decoder renders to while its SurfaceView is gone. It drops each image
@@ -1842,6 +1884,9 @@ private class AudioRenderer(
     private var track: AudioTrack? = null
     @Volatile private var navigationAttenuationDb = 0
     private var appliedNavigationAttenuationDb: Int? = null
+    /** Level the iPhone asked for while a prompt plays, and where the ramp has reached. */
+    @Volatile private var mediaDuckDb = NO_DUCK_DB
+    private var currentMediaDuckDb = NO_DUCK_DB
     private var pcm = ByteArray(64 * 1024)
     private var playbackStarted = false
     private var prebufferBytes = 0
@@ -2147,6 +2192,10 @@ private class AudioRenderer(
         navigationAttenuationDb = NavigationAudioGain.clamp(db)
     }
 
+    fun setMediaDuckDb(db: Float) {
+        mediaDuckDb = db
+    }
+
     /**
      * Worker-thread only. The guidance is scaled in [attenuateNavigation] as it is written, not with
      * AudioTrack.setVolume: on one head unit the track accepted every setVolume and the guidance on
@@ -2166,6 +2215,26 @@ private class AudioRenderer(
     private fun attenuateNavigation(data: ByteArray, offset: Int, length: Int) {
         if (mappedChannel != AudioChannel.NAVIGATION) return
         NavigationAudioGain.scalePcm16(data, offset, length, navigationAttenuationDb)
+    }
+
+    /**
+     * Worker thread only. Slides the music to the level the iPhone asked for at duckAudio and back
+     * up at unduckAudio. Scaling the PCM rather than the track volume: on this head unit
+     * AudioTrack.setVolume was accepted and ignored (#719), the same reason the guidance is scaled.
+     */
+    private fun applyMediaDuck(data: ByteArray, offset: Int, length: Int) {
+        if (mappedChannel != AudioChannel.MEDIA) return
+        val target = mediaDuckDb
+        val current = currentMediaDuckDb
+        val next = if (current == target) {
+            current
+        } else if (target < current) {
+            maxOf(target, current - MEDIA_DUCK_RAMP_STEP_DB)
+        } else {
+            minOf(target, current + MEDIA_DUCK_RAMP_STEP_DB)
+        }
+        if (next != current) currentMediaDuckDb = next
+        if (next < NO_DUCK_DB) NavigationAudioGain.scalePcm16(data, offset, length, NavigationAudioGain.linear(next))
     }
 
     private fun audioAttributesFor(
@@ -2446,6 +2515,7 @@ private class AudioRenderer(
         voiceFilter?.process(data, offset, length)
         applyNavigationAttenuation()
         attenuateNavigation(data, offset, length)
+        applyMediaDuck(data, offset, length)
         if (!fadeApplied) {
             applyFadeIn(data, offset, length)
             fadeApplied = true

@@ -63,7 +63,7 @@ interface AirPlayMediaHandler {
     fun setIapTunnelHandler(handler: ((BlockingDuplexByteStream) -> Boolean)?) {}
     fun onSetupResponseSent(session: AirPlaySession) {}
     /** duckAudio (true) and unduckAudio (false): the iPhone marks the start and end of a navigation prompt. */
-    fun onAudioDuck(session: AirPlaySession, ducked: Boolean) {}
+    fun onAudioDuck(session: AirPlaySession, ducked: Boolean, volumeDb: Float = 0f) {}
 }
 
 /**
@@ -773,7 +773,9 @@ class AirPlaySession(
             return RtspMessage.Response(status = 200)
         }
         when (type) {
-            "duckAudio" -> media.onAudioDuck(this, true)
+            // The plist carries the level the iPhone wants the car's media lowered to ("volume"),
+            // which is the only thing that can duck CarPlay's own music (#946 dropped it).
+            "duckAudio" -> media.onAudioDuck(this, true, (params["volume"] as? Number)?.toFloat() ?: 0f)
             "unduckAudio" -> media.onAudioDuck(this, false)
         }
         if (type == "requestUI" && string(params["url"]) == VideoInCar.UI_URL) {

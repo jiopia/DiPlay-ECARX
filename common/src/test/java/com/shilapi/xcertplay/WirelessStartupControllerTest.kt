@@ -166,9 +166,10 @@ class WirelessStartupControllerTest {
             "The selected iPhone is no longer paired. Choose it again in DiPlay.", selectionFailure("00:11:22:33:44:99", iPhone))
         val noneBonded = "No unambiguous bonded iPhone found; pair one iPhone and retry"
         assertCause(ConnectionFailureCause.NO_PAIRED_IPHONE, noneBonded, selectionFailure(null))
-        assertCause(ConnectionFailureCause.IPHONE_NOT_CHOSEN,
-            "Multiple bonded iPhones found and none is currently connected; connect one iPhone and retry",
-            selectionFailure(null, iPhone, "Work iPhone" to "00:11:22:33:44:02"))
+        // Two paired iPhones, neither in the car: the run starts with one and the fallback ladder
+        // dials the other, instead of sending the driver to the picker on every trip.
+        assertEquals("00:11:22:33:44:01",
+            (selection(null, iPhone, "Work iPhone" to "00:11:22:33:44:02") as android.bluetooth.BluetoothDevice).address)
         assertCause(ConnectionFailureCause.IPHONE_NOT_CHOSEN, noneBonded,
             selectionFailure(null, "Headset" to "00:11:22:33:44:03", "Pixel" to "00:11:22:33:44:04"))
     }
@@ -176,6 +177,20 @@ class WirelessStartupControllerTest {
     private fun assertCause(cause: ConnectionFailureCause, message: String, failure: Throwable) {
         assertEquals(message, failure.message)
         assertEquals(cause, (failure as? ConnectionFailureException)?.reason)
+    }
+
+    private fun selection(chosenIphone: String?, vararg bonded: Pair<String, String>): Any? {
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        // No profile service answers in a test, so each profile query would wait out its timeout.
+        shadowOf(adapter).setProfileProxy(BluetoothProfile.HEADSET, null)
+        shadowOf(adapter).setBondedDevices(bonded.mapTo(mutableSetOf()) { (name, address) ->
+            adapter.getRemoteDevice(address).also { shadowOf(it).setName(name) }
+        })
+        val controller = controller(chosenIphone)
+        try {
+            return controller.javaClass.getDeclaredMethod("selectWirelessBluetoothDevice", BluetoothAdapter::class.java)
+                .apply { isAccessible = true }.invoke(controller, adapter)
+        } finally { controller.close(); controller.awaitClosed(2_000) }
     }
 
     private fun selectionFailure(chosenIphone: String?, vararg bonded: Pair<String, String>): Throwable {

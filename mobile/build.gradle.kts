@@ -20,8 +20,8 @@ android {
         // Above both the upstream 0.2.21 build's 40 and the 0.1 release's 100, so this installs over
         // either one on the car. The name says which base it came from: this is a 0.2.22 test build,
         // not another build of the 0.1 release line.
-        versionCode = 101
-        versionName = "0.2.22-test1"
+        versionCode = 102
+        versionName = "0.2.22-test2"
 
     }
 

@@ -1032,6 +1032,8 @@
     <string name="settings_cluster_speedometer_album_color_description">Yumuşak geçişlerle albüm çerçevesi rengiyle eşleştirir. Seçilen opaklığı korur.</string>
     <string name="settings_navigation_prompt_audio_focus">Navigasyon komutları ses odağı istesin</string>
     <string name="settings_navigation_prompt_audio_focus_description">Her CarPlay navigasyon komutu sırasında DiPlay, diğer seslerin kısılmasını sağlayan geçici bir ses odağı talep eder ve komuttan sonra serbest bırakır. Müzik çalana kadar komutlar sessiz kalıyorsa veya komutlar sırasında müziğin kısılması gerekiyorsa bunu deneyin. Ana ünitenin kendi sesi komutlar sırasında kısılabilir veya duraklayabilir. Bir sonraki CarPlay bağlantısında geçerli olur.</string>
+    <string name="settings_navi_ducks_media">Navigasyon anonslarında müziği kıs</string>
+    <string name="settings_navi_ducks_media_description">Her CarPlay navigasyon anonsu sırasında CarPlay\'de çalan müzik iPhone\'un istediği seviyeye kısılır ve anons bitince geri yükseltilir. Müziğin tam seste kalması için kapatın.</string>
     <string name="setup_features_description_unknown">İstediğiniz özellikleri şimdi açın; her şey Ayarlar\'da kalır ve daha sonra değiştirilebilir.</string>
     <string name="size_option_millimeters">%1$s · %2$d mm</string>
     <string name="vpn_authorization_adb_command">Ana üniteye bağlı bir bilgisayardan bu ADB komutunu bir kez çalıştırın, ardından iPhone\'u tekrar takın:\nadb shell appops set %1$s ACTIVATE_VPN allow</string>

@@ -219,6 +219,7 @@ open class CarPlayHostActivity : ComponentActivity() {
         hostName = "lynkco-" + DiPlayBootstrap.deviceId(airPlayIdentity).replace(":", "").lowercase(),
         hostMac = DiPlayBootstrap.deviceId(airPlayIdentity).split(":").map { it.toInt(16).toByte() }.toByteArray(),
         wirelessBluetoothDeviceAddress = DiPlayPreferences.phoneAddress(this),
+        onWirelessBluetoothDeviceReached = RememberReachedPhone(applicationContext),
         transport = if (wirelessEnabled) CarPlayTransport.WIRELESS else CarPlayTransport.WIRED,
         wirelessHotspotMode = wirelessHotspotMode,
         wifiP2pPreferredChannel = AirPlayPersistence.loadWifiP2pPreferredChannel(this),
@@ -5171,6 +5172,7 @@ open class CarPlayHostActivity : ComponentActivity() {
             vendorLowLatencyDecoder = AirPlayPersistence.loadLowLatencyDecoder(this),
             mtkDecoderTuningEnabled = AirPlayPersistence.loadMtkDecoderTuning(this),
             navigationPromptAudioFocus = AirPlayPersistence.loadNavigationPromptAudioFocus(this),
+            naviDucksMedia = AirPlayPersistence.loadNaviDucksMedia(this),
         )
     }
 
@@ -6943,5 +6945,18 @@ internal object CarPlayBackgroundSession {
 private class HudReportSink(private val target: SessionLogFile?) : (String) -> Unit {
     override fun invoke(message: String) {
         AsyncDiagnosticLog.append(target, message)
+    }
+}
+
+/**
+ * Writes back the phone a wireless run actually reached, so the next launch dials it first instead
+ * of one the driver left at home — the picked phone is unavailable, the fallback found another.
+ *
+ * A named class rather than a lambda for the same reason as [HudReportSink]: it sits outside
+ * CarPlayHostActivity's position-numbered lambda classes.
+ */
+private class RememberReachedPhone(private val context: Context) : (String, String?) -> Unit {
+    override fun invoke(address: String, name: String?) {
+        DiPlayPreferences.savePhone(context, address, name ?: "iPhone")
     }
 }

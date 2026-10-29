@@ -12,27 +12,31 @@ import org.robolectric.annotation.Config
 @Config(sdk = [29])
 class AudioDuckCommandTest {
     @Test fun duckCommandsReachTheMediaHandlerAndOtherCommandsDoNot() {
-        val ducks = mutableListOf<Boolean>()
+        val ducks = mutableListOf<Pair<Boolean, Float>>()
         val commands = mutableListOf<String>()
         val session = session(
             object : AirPlayMediaHandler {
-                override fun onAudioDuck(session: AirPlaySession, ducked: Boolean) { ducks += ducked }
+                override fun onAudioDuck(session: AirPlaySession, ducked: Boolean, volumeDb: Float) {
+                    ducks += ducked to volumeDb
+                }
             },
             object : AirPlaySessionListener {
                 override fun onCommand(session: AirPlaySession, type: String, params: Map<String, Any?>) { commands += type }
             },
         )
         try {
-            for (type in listOf("duckAudio", "modesChanged", "unduckAudio", "requestUI")) command(session, type)
+            // duckAudio carries the level the iPhone wants the car's media at; unduckAudio carries none.
+            command(session, "duckAudio", volume = -14f)
+            for (type in listOf("modesChanged", "unduckAudio", "requestUI")) command(session, type)
         } finally { session.close() }
-        assertEquals(listOf(true, false), ducks)
+        assertEquals(listOf(true to -14f, false to 0f), ducks)
         assertEquals(listOf("duckAudio", "modesChanged", "unduckAudio", "requestUI"), commands)
     }
 
     @Test fun engineForwardsDucksAndEndsAPromptWhoseSessionCloses() {
         val ducks = mutableListOf<Boolean>()
         val engine = CarPlayMediaEngine(object : MediaSink {
-            override fun onAudioDuck(ducked: Boolean) { ducks += ducked }
+            override fun onAudioDuck(ducked: Boolean, volumeDb: Float) { ducks += ducked }
         })
         val first = session(engine)
         val other = session(engine)
@@ -53,8 +57,10 @@ class AudioDuckCommandTest {
         }
     }
 
-    private fun command(session: AirPlaySession, type: String) {
-        val body = BplistCodec.encode(mapOf("type" to type, "params" to mapOf("durationMs" to 500L)))
+    private fun command(session: AirPlaySession, type: String, volume: Float? = null) {
+        val params = mutableMapOf<String, Any?>("durationMs" to 500L)
+        if (volume != null) params["volume"] = volume
+        val body = BplistCodec.encode(mapOf("type" to type, "params" to params))
         AirPlaySession::class.java.getDeclaredMethod("handle", RtspMessage.Request::class.java)
             .apply { isAccessible = true }
             .invoke(session, RtspMessage.Request("POST", "/command", "RTSP/1.0", emptyMap(), body))
