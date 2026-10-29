@@ -133,10 +133,11 @@ internal object CarPlayMediaKeys {
                     val previousId = nowPlaying.artworkTransferId
                     if (previousId != null) {
                         ambientColorCache.remove(previousId)
-                        artworkCache.remove(previousId)
+                        if (previousId != update.artworkTransferId) artworkCache.remove(previousId)
                     }
                     if (previousId == update.artworkTransferId) {
-                        artworkOwner = artworkQueue.newSession()
+                        // Metadata can arrive after its artwork. Keep the connection's decode token;
+                        // cancelling it here loses a valid in-flight cover for a reused reference.
                         initialAlbumRecovery = InitialAlbumRecovery()
                     }
                     artwork = nextArtwork(update.artworkTransferId, artworkCache, artwork)
@@ -144,7 +145,7 @@ internal object CarPlayMediaKeys {
                 if (nowPlaying.elapsedMillis != update.elapsedMillis) elapsedUpdatedAt = SystemClock.elapsedRealtime()
                 val metadataChanged = metadataChanged(nowPlaying, update) || artwork !== previousArtwork
                 nowPlaying = update
-                if (metadataChanged) ClusterMusicState.publish(update, update.artworkTransferId?.let { artworkCache[it] })
+                if (metadataChanged) ClusterMusicState.publish(update, artwork)
                 updateInitialAlbumRecovery(expected)
                 // The iPhone repeats NowPlayingUpdate about twice a second for the position alone.
                 // Republishing the metadata each time sent a copy of the artwork through system_server
@@ -167,6 +168,13 @@ internal object CarPlayMediaKeys {
         val decoded = result?.bitmap
         if (artworkOwner !== expected) {
             decoded?.recycle()
+            return
+        }
+        // Empty/corrupt transfers are not a request to clear a valid cover. Session teardown
+        // clears the image explicitly. Keep recovery eligible when decoding has failed.
+        if (decoded == null) {
+            Log.i(TAG, "artwork decode failed reference=$id; retaining cover")
+            controller?.let(::updateInitialAlbumRecovery)
             return
         }
         artworkCache.remove(id)
@@ -421,6 +429,11 @@ internal object CarPlayMediaKeys {
         WheelKeyLog.note("media key $source -> CarPlay $index sent=$sent")
     }
 
+    private fun notUsed(source: String) {
+        Log.i(TAG, "media key $source not used by CarPlay")
+        WheelKeyLog.note("media key $source not used by CarPlay")
+    }
+
     /** A steering-wheel media key captured outside the Android key stream (Geely/Lynk). */
     internal fun onExternalMediaKey(index: Int) = send(index, "geely-wheel")
 
@@ -529,6 +542,8 @@ internal object CarPlayMediaKeys {
 /**
  * Media-session input → CarPlay presses. Hardware keys arrive as button events and keep the toggle;
  * media controllers (not hardware keys) call [onPlay] and [onPause] with an explicit intent.
+ * A button that is not a CarPlay key goes to [notUsed]: a car that sends its own code for a wheel key
+ * then shows that code in the report, instead of looking like a car that sent nothing (#610).
  */
 internal class CarPlayMediaCallback(
     private val send: (index: Int, source: String) -> Unit,
