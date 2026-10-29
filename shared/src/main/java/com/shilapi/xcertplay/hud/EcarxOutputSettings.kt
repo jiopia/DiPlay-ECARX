@@ -35,6 +35,7 @@ object EcarxOutputSettings {
     private const val PREFS = "diplay_ecarx_outputs_v2"
     private const val KEY_ENABLED = "dim_navigation_enabled"
     private const val KEY_PRESENTATION = "dim_presentation_switch"
+    private const val KEY_MIRROR_OWNED = "dim_presentation_owned"
     private const val KEY_MEDIA = "dim_media_enabled"
 
     /**
@@ -84,6 +85,25 @@ object EcarxOutputSettings {
     fun setPresentationSwitch(context: Context, enabled: Boolean) {
         check(prefs(context).edit().putBoolean(KEY_PRESENTATION, enabled).commit()) {
             "Could not persist the ECARX instrument-cluster projection setting"
+        }
+    }
+
+    /**
+     * Whether **this app** left the platform's projection switch on.
+     *
+     * Different question from [presentationSwitch], which is the driver's choice. The projection is
+     * route-driven since fix37: a route opens it and the end of a route closes it, so what this
+     * records is "our last accepted call said on and nothing has said off since". The platform keeps
+     * that switch in its cluster service across our process dying, so without this a session killed
+     * mid-route — ignition off while navigating, or a build installed over the running app — leaves
+     * display 1 attached and the cluster mirrors the whole centre screen with nothing of ours on it.
+     * The next process reads this at start-up and hands the panel back (see `EcarxHudBridge`).
+     */
+    fun mirrorOwned(context: Context): Boolean = prefs(context).getBoolean(KEY_MIRROR_OWNED, false)
+
+    fun setMirrorOwned(context: Context, owned: Boolean) {
+        check(prefs(context).edit().putBoolean(KEY_MIRROR_OWNED, owned).commit()) {
+            "Could not persist the ECARX instrument-cluster projection ownership"
         }
     }
 

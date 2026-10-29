@@ -75,6 +75,14 @@ object NavigationOutputs {
     fun onNowPlaying(now: CarPlayNowPlaying) = EcarxMediaBridge.onNowPlaying(now)
 
     /**
+     * The cover URL for the card's current track, or `null` for none. May run on any thread.
+     *
+     * Separate from [onNowPlaying] because artwork arrives after the metadata it belongs to; the
+     * card is re-pushed either way, so a cover that lands late still reaches the screen.
+     */
+    fun onArtwork(uri: String?) = EcarxMediaBridge.onArtwork(uri)
+
+    /**
      * Routes the cluster bridges' own lines into the session report. Called once the session log
      * exists — see `AndroidMediaSink`'s `onAudioDiagnostic` for the same seam on the audio side.
      *

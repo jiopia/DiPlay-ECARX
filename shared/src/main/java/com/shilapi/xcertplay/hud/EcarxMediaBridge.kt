@@ -85,6 +85,8 @@ internal object EcarxMediaBridge {
 
     /** The newest frame the phone reported; `null` until it reports once. */
     private var wanted: CarPlayNowPlaying? = null
+    /** The cover URL for the current track, or `null` when the phone has not sent one. */
+    private var artworkUri: String? = null
     /** What the cluster was last told, so an unchanged frame is not sent again. */
     private var pushed: EcarxDimApi.PlaybackInfo? = null
     private var sourceTypeSent = false
@@ -159,12 +161,27 @@ internal object EcarxMediaBridge {
         wanted = now
     }
 
+    /**
+     * The cover the card should show, as a URL its own image loader can fetch. May run on any thread.
+     *
+     * A separate entry point from [onNowPlaying] because the two arrive at different times — the
+     * metadata first, the artwork a beat later — and the frame is only re-pushed when something in
+     * it actually changed. Sending the cover as a URL rather than as pixels is not a shortcut: the
+     * cluster hands this string to `UniversalImageLoader`, which has no other way in.
+     */
+    fun onArtwork(uri: String?) = synchronized(lock) {
+        if (artworkUri == uri) return@synchronized
+        artworkUri = uri
+        report("media cover " + (uri ?: "cleared"))
+    }
+
     /** One-line state for the settings diagnostics block. */
     fun state(): String = synchronized(lock) {
         " media=" + (media != null) +
             " sourceType=" + sourceTypeSent +
             " sourceList=" + sourceListSent +
             " pushed=" + (pushed != null) +
+            " cover=" + (artworkUri != null) +
             " progress=" + lastProgress
     }
 
@@ -239,6 +256,7 @@ internal object EcarxMediaBridge {
         album = now.album.orEmpty(),
         durationMillis = now.durationMillis ?: 0L,
         playing = now.playing,
+        artworkUri = artworkUri.orEmpty(),
     )
 
     private fun pushLocked(handle: Any, info: EcarxDimApi.PlaybackInfo) {

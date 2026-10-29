@@ -23,6 +23,10 @@ internal object ClusterMusicState {
             val hasTrack = !info.title.isNullOrBlank() || !info.artist.isNullOrBlank()
             val retained = if (hasTrack) artwork ?: state.artwork?.takeUnless { it.isRecycled } else null
             state = Snapshot(info, retained, if (changed) SystemClock.elapsedRealtime() else state.changedAt, state.revision + if (changed) 1 else 0)
+            // The cluster's own media card takes a cover as a URL and nothing else; this is the one
+            // place that knows when the image on screen changed. It returns immediately for a
+            // repeated image, which is every call that is not a new decode.
+            ClusterCover.offer(retained)
             listeners.toList().forEach { it(state) }
         }
     }

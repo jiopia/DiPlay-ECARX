@@ -171,6 +171,21 @@ internal object EcarxHudBridge {
     private var presentationAttempts = 0
 
     /**
+     * A stale mirror is still attached and has to be taken down, once the DIM handle exists.
+     *
+     * The platform's switch is **not** a saved setting on its side: it lives in the cluster service
+     * and outlives the process that turned it on. A session killed while a route was running — the
+     * driver switching the ignition off, or an install over the running app — therefore leaves
+     * display 1 attached, and with our window gone the panel falls back to the platform's mirror of
+     * the **whole centre screen**. That is the "仪表投屏自己打开了" a driver sees after installing a
+     * new build: the switch in this app reads off, and the cluster still shows the centre screen.
+     *
+     * One release is enough once the handle is there (the call is `void` and unchecked), so this is
+     * a flag rather than a watch: [tick] clears it on the first attempt.
+     */
+    private var releaseStaleMirror = false
+
+    /**
      * What the last accepted `setPresentationToDimSwitch` named — the empty string while a mirror is
      * open, null when none is. Printed by [diagnostics] so a report can tell "the switch is off" from
      * "the switch is off but the platform still has a session open".
@@ -225,6 +240,7 @@ internal object EcarxHudBridge {
         // Seed the watch from the saved intent before the first attempt, so a head unit that comes
         // back with the engine already running restores the cluster without the user touching it.
         presentationWanted = EcarxOutputSettings.presentationSwitch(app)
+        val savedSwitch = presentationWanted
         reclaimLocked()
         watchDisplaysLocked(app)
         report(
@@ -237,11 +253,22 @@ internal object EcarxHudBridge {
         // the platform's mirror of the centre screen on the cluster with no route running, over a
         // window that did not exist. A route arms it (see [clusterPresentationRequested]) and the
         // end of a route releases it; the saved value is only brought back in line here.
+        //
+        // Bringing the saved value in line is not enough on its own: the platform keeps the switch
+        // it was last handed, so a mirror left on by a killed session is still attached and is what
+        // the driver sees as "the whole cluster got projected again". The release is therefore sent
+        // as well, and retried from [tick] until there is a handle to send it on.
         if (presentationWanted) {
             presentationWanted = false
             EcarxOutputSettings.setPresentationSwitch(app, false)
             report("projection not restored at start-up; the cluster panel is route-driven")
         }
+        // A mirror **this app** opened and never closed is the other way the panel comes up
+        // uninvited: a session killed mid-route leaves the platform's switch on, our window gone,
+        // and the cluster mirroring the whole centre screen while this switch reads off. The saved
+        // switch counts as ownership too — every build before this one wrote it from the route's own
+        // show, so a car upgrading from one of those has the residue and nothing else to point at it.
+        releaseStaleMirror = savedSwitch || EcarxOutputSettings.mirrorOwned(app)
         startTickerLocked()
     }
 
@@ -401,7 +428,10 @@ internal object EcarxHudBridge {
         // settings screen rebuilt. This line is what separates them next time.
         report("presentation request show=$show origin=$origin")
         val app = context ?: return EcarxDimApi.EcarxResult.failed("DIM not initialized")
-        EcarxOutputSettings.setPresentationSwitch(app, show)
+        // Only the driver's own switch is a saved setting. A route opens and closes the panel by
+        // itself, and persisting that turned "a route was running" into "the switch is on" for the
+        // next process — which is how a killed session left the cluster mirroring the centre screen.
+        if (origin.startsWith("settings")) EcarxOutputSettings.setPresentationSwitch(app, show)
         presentationWanted = show
         if (!show) {
             presentationAttempts = 0
@@ -437,6 +467,13 @@ internal object EcarxHudBridge {
             return result
         }
         presentedPackage = if (show) packageName else null
+        // Whether a mirror of ours is open **on the platform**, which is what the next process has
+        // to know to take a stale one down (see [releaseStaleMirror]). Only written on a change:
+        // the watch re-asserts the same value every few seconds and none of those are a transition.
+        val app = context
+        if (app != null && EcarxOutputSettings.mirrorOwned(app) != show) {
+            EcarxOutputSettings.setMirrorOwned(app, show)
+        }
         report("presentation switch -> $show package=\"$packageName\"")
         return result
     }
@@ -465,6 +502,12 @@ internal object EcarxHudBridge {
         // The cluster service is not up when the head unit is only on accessory power, so keep
         // asking for the handles as well as for the projection itself.
         if (dim == null || navi == null) reclaimLocked()
+        // The panel is handed back as soon as there is a handle to hand it back on. Never while a
+        // route has just armed it again: that route's window is what the driver is looking at.
+        if (releaseStaleMirror && !presentationWanted && dim != null) {
+            releaseStaleMirror = false
+            report("stale projection released at start-up: " + applyPresentationLocked(false).reason)
+        }
         watchProjectionLocked()
         // Guidance can expire without a frame (a list that stays empty), so check every second.
         if (lastPushed != null && route.current() == null) endLocked()
@@ -650,6 +693,13 @@ internal object EcarxHudBridge {
             // Hand the panel back: the presentation stops requesting the cluster stream, so the
             // head unit's own instrument page returns instead of a frozen last map frame.
             clusterPresentationRequested?.invoke(false)
+            // With no host activity there is nobody to take our window off display 1, so the switch
+            // is released here instead. Left alone it keeps the panel attached with nothing of ours
+            // on it, and the cluster falls back to mirroring the whole centre screen.
+            if (clusterPresentationRequested == null && presentationWanted) {
+                releaseStaleMirror = false
+                applyPresentation(false, "route-ended")
+            }
         }
     }
 

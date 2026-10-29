@@ -3,11 +3,11 @@
 [English summary](#english-summary) · [上游原版 README（存档）](docs/UPSTREAM-DIPLAY-README.md) · [更新记录](CHANGELOG.md)
 
 把 CarPlay 车机端接进**领克 05（亿咖通 ECARX 车机）**的移植版本。基于上游
-[DiPlay 0.2.21](https://github.com/shihabal3amri/DiPlay) 源码，删掉全部比亚迪专用路径，改为亿咖通
+[DiPlay 0.2.22](https://github.com/shihabal3amri/DiPlay) 源码，删掉全部比亚迪专用路径，改为亿咖通
 **DIM（DimInteraction）**通道：仪表盘显示 CarPlay 的转向箭头、距离、路名与预计到达时间，中控正常显示
 CarPlay，仪表盘另一角显示 CarPlay 正在播放的音乐卡片。
 
-当前版本 **0.1**。只在**一辆**车上做过实车验证，见下面的[状态矩阵](#状态矩阵说到哪一步就是哪一步)。
+当前版本 **0.2**。只在**一辆**车上做过实车验证，见下面的[状态矩阵](#状态矩阵说到哪一步就是哪一步)。
 
 > ### ⚠️ 发布的 APK 不含 MFi 身份
 >
@@ -40,14 +40,15 @@ CarPlay，仪表盘另一角显示 CarPlay 正在播放的音乐卡片。
 
 ## 与上游的区别
 
-| | 上游 DiPlay 0.2.21 | 本移植版 0.1 |
+| | 上游 DiPlay 0.2.22 | 本移植版 0.2 |
 |---|---|---|
 | 目标车机 | 比亚迪 DiLink 1.0/3/4/5.x、B 系列等 | 亿咖通 ECARX（领克 05） |
 | 仪表导航 | BYD HUD + DiLink 集群节点 | 亿咖通 DIM：`INaviInteraction` 推箭头 id / 距离 / ETA / 路名 |
 | 仪表画面 | BYD 专用投屏 | 本项目在 display 1 自建 `Presentation`，装 CarPlay **原生集群流**（1920×720，8:3），再由 DIM 开关把这块屏接到仪表 |
-| 仪表媒体卡片 | BYD 自带音乐源 | `IMediaInteraction` 推曲名/歌手/专辑/播放状态（关蓝牙后唯一来源） |
+| 仪表媒体卡片 | BYD 自带音乐源 | `IMediaInteraction` 推曲名/歌手/专辑/播放状态（关蓝牙后唯一来源），封面由本机回环 HTTP 供 URL |
+| 导航播报压低音乐 | 由系统 `MAY_DUCK` 决定 | iPhone 给的 dB 落到 PCM 斜坡，开关在「音频路由」 |
 | BYD 代码 | 有 | **全部删除** |
-| 版本号 | `0.2.21`（versionCode 40） | `0.1`（versionCode **100**，保证能覆盖升级） |
+| 版本号 | `0.2.22`（versionCode 40） | `0.2`（versionCode **103**，保证能覆盖升级） |
 | MFi 身份 | 发布包内置实验性身份 | **默认不内置**，构建时用环境变量挂载 |
 | 取证/探针代码 | 少量 | 全部清除，不留在发布包里 |
 
@@ -57,7 +58,7 @@ CarPlay，仪表盘另一角显示 CarPlay 正在播放的音乐卡片。
 
 ## 状态矩阵：说到哪一步就是哪一步
 
-### ✅ 已实车验证（2026-10-24，领克 05 实车，无线连接）
+### ✅ 已实车验证（2026-10-24 / 10-29，领克 05 实车，无线连接）
 
 - **无线 CarPlay 连接、中控投屏**（Wi-Fi Direct / 车机热点两条路都走通了）。
 - **仪表导航**：仪表盘整幅显示 CarPlay 这一路的**高德车道级地图**（CarPlay 集群流，1920×720，贴合
@@ -67,10 +68,18 @@ CarPlay，仪表盘另一角显示 CarPlay 正在播放的音乐卡片。
 - **HUD**：导航开始时 HUD 与仪表卡片同时出现箭头与距离，导航结束后一起撤掉。
 - **仪表媒体卡片**：曲名、歌手、专辑、播放状态（前提：关掉 iPhone 蓝牙，见[蓝牙与媒体](#蓝牙与媒体为什么必须关掉它)）。
 - **导航结束收尾**：仪表交回车机自己的页面，不留残影、不盖住原厂仪表。
-- **导航语音压低音乐（duck）**、**车机蓝牙让位与自动恢复**。
+- **导航语音压低音乐（duck）**：开关在「设置 › 音频 › 音频路由」第一行，默认开；播报时音乐明显变小、
+  播完约 0.5 秒内升回。报告的 `Audio: media duck db=…` 能看到 iPhone 给的 dB。
+- **换手机自动切换**：上次那台不在车里时，自动改用另一台已配对的手机连上，并把地址记下来，
+  下次开机直接连它。
+- **车机蓝牙让位与自动恢复**。
 
 ### ⚠️ 已实现但**没有**实车验证，不保证
 
+- **「仪表投屏」不再自己打开**（0.2 新改）。现象是覆盖安装或导航中被杀进程之后，仪表整块变成中控
+  镜像而开关是关的；本次改为启动时主动把车机侧那个残留开关关掉。**下一次上车请重点看这一条。**
+- **仪表媒体卡片的专辑封面**（0.2 新改）。卡片只吃 URL，本版由本机回环 HTTP 提供；能否被车机加载器
+  取到、封面出现的延迟有多久，都还没有实车回报。
 - **USB 有线连接。** 本版没有在这台车上试过有线。线材、USB 权限、iAP2 握手都可能有本车前未暴露的
   问题，请不要把「无线好用」外推到「有线也好用」。
 - **方向盘按键。** 学习界面可用，媒体键 / 语音键 / 接听挂断已接线，但没有逐键系统验证。
@@ -102,13 +111,15 @@ CarPlay，仪表盘另一角显示 CarPlay 正在播放的音乐卡片。
 | 设置项 | 默认 | 建议 | 说明 |
 |---|---|---|---|
 | **仪表导航** | 开 | **必须开** | 不开就不向仪表推任何 DIM 数据，仪表与 HUD 都不会有箭头、距离、路名。导航开始时"仪表投屏"也由它驱动。 |
-| **仪表媒体卡片** | 开 | **按需开**（建议开） | 把 CarPlay 的曲名/歌手/专辑/播放状态推到仪表。关掉后，仪表只在你**用车机自带蓝牙放歌**时才有内容；一旦按下面的做法关掉 iPhone 蓝牙，卡片就会一直是空的。 |
-| **仪表投屏** | 关 | **不要开** | 它把**整块中控画面镜像到仪表**，会盖住仪表上的箭头和媒体卡片——这就是之前"开了投屏反而看不到箭头"的原因。导航开始时本项目会自己接管这块屏，不需要手动开；手动打开前它会弹确认框。 |
+| **仪表媒体卡片** | 开 | **按需开**（建议开） | 把 CarPlay 的曲名/歌手/专辑/播放状态/封面推到仪表。关掉后，仪表只在你**用车机自带蓝牙放歌**时才有内容；一旦按下面的做法关掉 iPhone 蓝牙，卡片就会一直是空的。 |
+| **仪表投屏** | 关 | **不要开** | 它把**整块中控画面镜像到仪表**，会盖住仪表上的箭头和媒体卡片——这就是之前"开了投屏反而看不到箭头"的原因。导航开始时本项目会自己接管这块屏，不需要手动开；手动打开前它会弹确认框。**启动时会把这个开关留下的残留状态一并关掉**，所以它不会再"自己打开"。 |
 
-另外两组按需：
+另两组按需：
 
 | 位置 | 设置项 | 什么时候动它 |
 |---|---|---|
+| 设置 → 音频 → 「音频路由」 | **导航播报时压低音乐** | 默认开。播报时音乐压不下去、或者反过来觉得压太多，在这里开关。它只影响 CarPlay 自己播的音乐。 |
+| 设置 → 高级 → 「高级媒体」 | 导航提示音音频焦点 | 只在**导航完全没声音**时动它。和上面那个"压低"不是一件事。 |
 | 设置 → 方向盘按键 → 「亿咖通方向盘按键」 | 媒体键控制 CarPlay / 接听挂断 / 语音(Siri) | 想让方向盘按键管 CarPlay 时打开，然后逐个键点按学习。学习过的键继续生效。 |
 | 设置 → 连接设置 → 「打开连接设置」 | 连接方式（Wi-Fi Direct / 车机热点 / 已有 Wi-Fi） | 默认即可。车机热点那一路需要在弹出提示时允许。 |
 
@@ -263,7 +274,12 @@ unzip -l mobile/build/outputs/apk/release/mobile-release.apk | grep offline-mfi
      （`arrowId=0` 表示这一帧没拿到转向类型）
    - `DIM guidance ended` → `presentation switch -> false` → `Cluster panel: dismissed` — 结束收尾的
      三步，顺序反了会留残影
-   - `media counters media=true sourceType=… sourceList=… pushed=…` — 媒体卡片通道是否活着
+   - `stale projection released at start-up: ok` — 启动时把上一程留下的仪表镜像关掉了（有这一行是
+     好事；没有说明上次没收尾）
+   - `media counters media=true sourceType=… sourceList=… pushed=… cover=…` — 媒体卡片通道是否活着
+   - `media cover http://127.0.0.1:<port>/cover/<n>.jpg` — 封面 URL 已交给仪表卡片（没取到图就是
+     车机侧加载器的问题，不是本 App 没给）
+   - `Audio: media duck db=-13.98` — iPhone 这一帧要求压低多少 dB
 
 ## 从源码构建
 
@@ -286,7 +302,7 @@ DIPLAY_AUTH_ASSETS_DIR=/path/to/auth-assets ./gradlew :mobile:assembleRelease
 - 仪表是箭头 + 距离 + 路名，不是整幅地图。
 - 关掉 iPhone 蓝牙后，车机蓝牙电话、车机自带音乐都不可用（这是换取声音的代价）。
 - 语音键可能双响应，需停用车机自带语音助手。
-- 「仪表投屏」开关留着是历史遗留，正确用法是不碰它。
+- 「仪表投屏」这个开关留着只是为了排查用；正常使用不碰它——导航时仪表由本项目自己接管。
 
 ## 许可与致谢
 
@@ -302,14 +318,17 @@ DIPLAY_AUTH_ASSETS_DIR=/path/to/auth-assets ./gradlew :mobile:assembleRelease
 ## English summary
 
 A CarPlay head-unit port for the **Lynk & Co 05** (Geely/ECARX head unit, Snapdragon 820A, Android 9),
-based on upstream [DiPlay 0.2.21](https://github.com/shihabal3amri/DiPlay). All BYD-specific code paths are
+based on upstream [DiPlay 0.2.22](https://github.com/shihabal3amri/DiPlay). All BYD-specific code paths are
 removed; the instrument cluster is driven through ECARX **DIM (`DimInteraction`)** — turn arrows, distance,
 street names and ETA — while the cluster stream itself is a `Presentation` this app owns on display 1
-(1920×720 CarPlay cluster stream). A media card (title/artist/album/state) goes over `IMediaInteraction`.
+(1920×720 CarPlay cluster stream). A media card (title/artist/album/state, plus artwork served over a
+loopback HTTP URL) goes over `IMediaInteraction`.
 
-Version **0.1**, verified on one car only: wireless CarPlay, cluster guidance, HUD, cluster media card,
-cluster hand-back on route end, Bluetooth yield/restore. **Not verified:** wired USB, microphone quality,
-steering-wheel keys per key, other ECARX models.
+Version **0.2**, verified on one car only: wireless CarPlay, cluster guidance, HUD, cluster media card,
+cluster hand-back on route end, navigation ducking the music (`duckAudio` dB applied as a PCM ramp) and
+automatic switch-over when the remembered phone is not in the car. **Not verified yet:** the new
+"cluster projection no longer turns itself on" repair and the media-card artwork, wired USB, microphone
+quality, steering-wheel keys per key, other ECARX models.
 
 **The published APK contains no MFi identity**, so it installs and opens but cannot authenticate with an
 iPhone. Build your own with `DIPLAY_AUTH_ASSETS_DIR=/path/to/auth-assets ./gradlew :mobile:assembleRelease`

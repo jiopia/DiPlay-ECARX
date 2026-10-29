@@ -18,10 +18,10 @@ android {
         minSdk = 24
         targetSdk = 37
         // Above both the upstream 0.2.21 build's 40 and the 0.1 release's 100, so this installs over
-        // either one on the car. The name says which base it came from: this is a 0.2.22 test build,
-        // not another build of the 0.1 release line.
-        versionCode = 102
-        versionName = "0.2.22-test2"
+        // either one on the car. 0.2 is the release line that replaced 0.1; the base is still the
+        // 0.2.22 source tree, and the two test builds before it (101/102) stay below this one.
+        versionCode = 103
+        versionName = "0.2"
 
     }
 

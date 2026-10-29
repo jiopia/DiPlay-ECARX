@@ -1,6 +1,7 @@
 package com.shilapi.xcertplay.hud
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -418,12 +419,14 @@ internal object EcarxDimApi {
     /**
      * One track as the cluster's media card sees it.
      *
-     * There is deliberately no artwork field. The cluster service resolves cover art by handing the
-     * `Uri` to `com.nostra13.universalimageloader`, which fetches `http`/`file`/`content` URLs and
-     * nothing else — not a bitmap, and not the `bitmap://` scheme a naive implementation reaches
-     * for. A track that exists only inside CarPlay's audio stream has no such URL, so the honest
-     * answer is the `null` the artwork getters already return; a field that could never hold
-     * anything else is worse than no field.
+     * Artwork is a **URL the cluster's image loader can fetch itself**, not an image: the card code
+     * hands the `Uri` to `com.nostra13.universalimageloader` (`loadImage(String, …)`), which speaks
+     * `http`/`file`/`content` and nothing else — no bitmap, and not the `bitmap://` scheme a naive
+     * implementation reaches for. A track that exists only inside CarPlay's stream has no such URL,
+     * so the app serves its own: [artworkUri] is a loopback `http://127.0.0.1:<port>/cover/<n>.jpg`
+     * on a socket only this device can reach, and the revision in the path is what makes the loader
+     * re-fetch instead of answering from its cache. Empty means "no cover", which the getters
+     * answer as `null`.
      */
     data class PlaybackInfo(
         val title: String = "",
@@ -431,6 +434,7 @@ internal object EcarxDimApi {
         val album: String = "",
         val durationMillis: Long = 0L,
         val playing: Boolean = false,
+        val artworkUri: String = "",
     )
 
     /**
@@ -699,6 +703,14 @@ internal object EcarxDimApi {
      * only reports what it actually has: title, artist, album, duration — plus the play/pause
      * state, which the toolkit never varies from "playing".
      */
+    /**
+     * The cover `Uri` to answer the payload with, or `null` for "no cover".
+     *
+     * Parsing cannot fail for a string this app built, and an empty one is the "no cover" case the
+     * getters answered before artwork existed — both are why this is a function and not a cast.
+     */
+    private fun artworkUri(url: String): Uri? = if (url.isEmpty()) null else Uri.parse(url)
+
     private class MediaItemHandler(private val info: PlaybackInfo) : InvocationHandler {
         override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
             // The three Object methods are the JVM's, not the platform's: counting them would drown
@@ -718,8 +730,10 @@ internal object EcarxDimApi {
                     (if (info.playing) EcarxDimApi.PLAYBACK_PLAYING else EcarxDimApi.PLAYBACK_PAUSED).toLong(),
                 )
                 "getSourceType" -> EcarxDimApi.coerceNumber(method.returnType, EcarxDimApi.MEDIA_SOURCE_TYPE.toLong())
-                // No cover, and no local file to point at: see [PlaybackInfo]. All five are `Uri`.
-                "getArtwork" -> null
+                // The card's own cover. A real `Uri` is the only thing its image loader accepts; see
+                // [PlaybackInfo]. The queue neighbours keep answering `null`: we have one image, and
+                // handing it out as "the next track's cover" would put the wrong picture on screen.
+                "getArtwork" -> artworkUri(info.artworkUri)
                 "getNextArtwork" -> null
                 "getPreviousArtwork" -> null
                 "getLyric" -> null

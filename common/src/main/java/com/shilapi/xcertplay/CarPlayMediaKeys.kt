@@ -78,6 +78,9 @@ internal object CarPlayMediaKeys {
             artworkOwner = artworkQueue.newSession()
         }
         appContext = context.applicationContext
+        // The cluster's media card cannot take an image, only a URL, so the cover has to be served
+        // from this process (see ClusterCover). Handing it the context here is what arms that.
+        ClusterCover.attach(context)
         controller = next
         GeelyWheelKeys.start(context)
         next.playbackListener = { playing ->
