@@ -1,6 +1,6 @@
 # DiPlay · 领克 05 / 亿咖通 ECARX 移植版
 
-[English summary](#english-summary) · [上游原版 README（存档）](docs/UPSTREAM-DIPLAY-README.md) · [更新记录](CHANGELOG.md)
+[English summary](#english-summary) · [上游原版 README（存档）](docs/UPSTREAM-DIPLAY-README.md) · [更新记录](CHANGELOG.md) · [实现方式、进度与未解难题](README-STATUS.md)
 
 把 CarPlay 车机端接进**领克 05（亿咖通 ECARX 车机）**的移植版本。基于上游
 [DiPlay 0.2.22](https://github.com/shihabal3amri/DiPlay) 源码，删掉全部比亚迪专用路径，改为亿咖通
